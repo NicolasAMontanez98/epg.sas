@@ -203,6 +203,8 @@ export default function Admin() {
         const d = new FormData(e.target)
         try { const r = await api.login(d.get('user'), d.get('password')); setToken(r.token); setMe(r.me) } catch (x) { setErr(x.message) }
       }}>
+        {/* Vuelve a la página anterior del sitio; si se llegó desde fuera (enlace directo), va al inicio. */}
+        <a href="/" className="back-link" onClick={(e) => { if (document.referrer.startsWith(location.origin) && history.length > 1) { e.preventDefault(); history.back() } }}>← Volver</a>
         <img src="/logo-text.png" alt="EPG S.A.S." width="120" height="120" />
         <p className="login-title mono">Acceso para clientes y empleados</p>
         <label>Usuario<input name="user" autoComplete="username" required /></label>
