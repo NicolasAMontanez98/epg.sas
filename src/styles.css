@@ -325,6 +325,8 @@ mark { background: none; color: var(--red); }
 .adm.login { display: grid; place-items: center; padding: 16px; }
 .adm-form { display: grid; gap: 14px; background: #fff; padding: 28px; border: 2px solid var(--ink); box-shadow: 8px 8px 0 var(--ink); width: 100%; max-width: 560px; }
 .adm.login .adm-form { max-width: 380px; } .adm.login img { margin: 0 auto; }
+.back-link { justify-self: start; font: 600 .75rem var(--mono); text-transform: uppercase; letter-spacing: .06em; text-decoration: none; color: var(--ink); padding: 6px 10px; margin: -8px 0 0 -10px; }
+.back-link:hover { color: var(--red); text-decoration: underline; }
 .adm label { display: grid; gap: 6px; font-size: .9rem; font-weight: 600; }
 .adm label.chk { display: flex; align-items: center; gap: 8px; }
 .adm input:not([type=checkbox]), .adm textarea, .adm select { font: inherit; font-weight: 400; padding: 10px 12px; border: 2px solid var(--ink); width: 100%; background: #fff; }
