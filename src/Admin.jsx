@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, getToken, setToken } from './api.js'
 import { SCHEMA, SETTINGS } from '../shared/schema.js'
+import { GENERAL_FIELDS } from './empalme/data.js'
+
+const FIELD_LABEL = Object.fromEntries(GENERAL_FIELDS.map((f) => [f.key, f.label]))
 
 function Field({ f, value, onChange }) {
   const [busy, setBusy] = useState(false)
@@ -155,14 +158,68 @@ function Portal({ me, onLogout }) {
   )
 }
 
+// Solicitudes de los formularios de la web: la más reciente primero.
+const REQ_STATUSES = ['Nueva', 'En gestión', 'Atendida']
+const SOURCE = { contacto: 'Contacto', 'empalme-ayuda': 'Empalme' }
+const when = (ts) => new Date(ts).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+function Requests({ me }) {
+  const [list, setList] = useState(null)
+  const [err, setErr] = useState('')
+  const [filter, setFilter] = useState('Abiertas')
+  const reload = useCallback(() => api.requests().then(setList).catch((e) => setErr(e.message)), [])
+  useEffect(() => { reload() }, [reload])
+  if (err) return <p className="err" role="alert">{err}. Revise que haya ejecutado el SQL actualizado en Supabase.</p>
+  if (!list) return <p>Cargando…</p>
+  const shown = list.filter((r) => filter === 'Todas' || (filter === 'Abiertas' ? r.status !== 'Atendida' : r.status === filter))
+  const setStatus = async (r, status) => { await api.setRequestStatus(r.id, status); setList(list.map((x) => (x.id === r.id ? { ...x, status } : x))) }
+  return (
+    <>
+      <p className="hint">Llegan desde el formulario de contacto y desde “Solicitar ayuda” en la página de empalme. {list.filter((r) => r.status === 'Nueva').length} nuevas.</p>
+      <div className="row req-filter">
+        {['Abiertas', ...REQ_STATUSES, 'Todas'].map((f) => <button key={f} type="button" className={`btn sm ${filter === f ? 'btn-red' : 'btn-ghost-d'}`} onClick={() => setFilter(f)}>{f}</button>)}
+      </div>
+      <ul className="req-list">
+        {shown.length === 0 && <li className="empty">No hay solicitudes en esta vista.</li>}
+        {shown.map((r) => (
+          <li key={r.id} className={`req st-${r.status.replace(/\s/g, '-')}`}>
+            <div className="req-head">
+              <span className={`role-tag ${r.source === 'contacto' ? '' : 'cliente'}`}>{SOURCE[r.source] ?? r.source}</span>
+              <b>{r.name}</b>{r.role && <small>{r.role}</small>}{r.town && <small>· {r.town}</small>}
+              <small className="req-date">{when(r.created_at)}</small>
+            </div>
+            {(r.topic || r.sheet) && <p className="req-topic">{[r.topic, r.sheet && `Hoja ${r.sheet}`].filter(Boolean).join(' · ')}</p>}
+            <p className="req-msg">{r.message}</p>
+            {r.payload && (
+              <details>
+                <summary>Ver lo diligenciado en el asistente</summary>
+                {r.payload.general && <dl className="req-data">{Object.entries(r.payload.general).map(([k, v]) => <div key={k}><dt>{FIELD_LABEL[k] ?? k}</dt><dd>{v}</dd></div>)}</dl>}
+                {r.payload.alerts?.length > 0 && <ul>{r.payload.alerts.map((a, i) => <li key={i}><b>{a.level || '—'}</b> · {a.origin} · {a.text}</li>)}</ul>}
+                {r.payload.progress && <p>Avance del libro: {r.payload.progress.done} de {r.payload.progress.applicable} hojas.</p>}
+              </details>
+            )}
+            <div className="row req-actions">
+              {r.email && <a className="btn btn-red sm" href={`mailto:${r.email}?subject=${encodeURIComponent('Re: su solicitud a EPG S.A.S.')}`}>Responder</a>}
+              {r.phone && <a className="btn btn-ghost-d sm" href={`https://wa.me/${r.phone.replace(/\D/g, '').replace(/^(?=3)/, '57')}`} target="_blank" rel="noopener">WhatsApp {r.phone}</a>}
+              <select aria-label={`Estado de la solicitud de ${r.name}`} value={r.status} onChange={(e) => setStatus(r, e.target.value)}>{REQ_STATUSES.map((s) => <option key={s}>{s}</option>)}</select>
+              {!r.emailed && <small className="mono" title="El correo de aviso no se pudo enviar">sin aviso por correo</small>}
+              {me.role === 'admin' && <button type="button" className="link danger" onClick={async () => { if (confirm(`¿Eliminar la solicitud de ${r.name}? No se puede deshacer.`)) { await api.removeRequest(r.id); reload() } }}>Eliminar</button>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
 function Dashboard({ me, onLogout }) {
   const [data, setData] = useState(null)
-  const [tab, setTab] = useState('banners')
+  const [tab, setTab] = useState('requests')
   const [saved, setSaved] = useState(false)
   const reload = useCallback(() => api.adminContent().then(setData).catch((e) => e.status === 401 && onLogout()), [onLogout])
   useEffect(() => { reload() }, [reload])
   if (!data) return <p className="loading">Cargando…</p>
-  const tabs = [...Object.entries(SCHEMA).map(([k, d]) => [k, d.label]), ['settings', SETTINGS.label], ...(me.role === 'admin' ? [['users', 'Usuarios']] : [])]
+  const tabs = [['requests', 'Solicitudes'], ...Object.entries(SCHEMA).map(([k, d]) => [k, d.label]), ['settings', SETTINGS.label], ...(me.role === 'admin' ? [['users', 'Usuarios']] : [])]
   return (
     <div className="adm-wrap">
       <aside>
@@ -175,7 +232,7 @@ function Dashboard({ me, onLogout }) {
       </aside>
       <section>
         <h2>{tabs.find(([k]) => k === tab)[1]}</h2>
-        {tab === 'users' ? <Users me={me} /> : tab === 'settings' ? (
+        {tab === 'requests' ? <Requests me={me} /> : tab === 'users' ? <Users me={me} /> : tab === 'settings' ? (
           <>
             <Form key="s" fields={SETTINGS.fields} initial={data.settings} onSave={async (v) => { await api.saveSettings(v); setSaved(true); reload() }} />
             {saved && <p className="ok" role="status">Cambios guardados.</p>}

@@ -84,3 +84,19 @@ export async function uploadImage(buffer, mimetype) {
   must(await sb().storage.from(BUCKET).upload(name, buffer, { contentType: mimetype, cacheControl: '31536000' }))
   return sb().storage.from(BUCKET).getPublicUrl(name).data.publicUrl
 }
+
+// ---------- Solicitudes ----------
+export async function createRequest(r) {
+  const { payload, ...cols } = r
+  return must(await sb().from('requests').insert({ ...cols, payload, consent_at: new Date().toISOString() }).select('id').single()).id
+}
+export async function markEmailed(id) {
+  must(await sb().from('requests').update({ emailed: true }).eq('id', id))
+}
+export const listRequests = async () => must(await sb().from('requests').select('*').order('created_at', { ascending: false }).limit(500))
+export async function setRequestStatus(id, status) {
+  return must(await sb().from('requests').update({ status }).eq('id', id).select('id')).length > 0
+}
+export async function deleteRequest(id) {
+  must(await sb().from('requests').delete().eq('id', id))
+}
