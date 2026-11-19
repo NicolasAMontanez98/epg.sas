@@ -412,3 +412,6 @@ mark { background: none; color: var(--accent); }
 .req-actions { flex-wrap: wrap; align-items: center; }
 .req-actions select { font: inherit; padding: 6px 8px; border: 2px solid var(--ink); background: #fff; width: auto; }
 @media (max-width: 560px) { .form-row { grid-template-columns: 1fr; } .req-date { margin-left: 0; width: 100%; } }
+
+.btn:disabled { opacity: .4; pointer-events: none; }
+.captcha { min-height: 65px; }

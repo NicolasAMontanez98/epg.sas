@@ -8,7 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SCHEMA, SETTINGS } from '../shared/schema.js'
 import * as db from './db.js'
-import { cleanRequest, confirmationEmail, requestEmail, sendEmail, STATUSES } from './requests.js'
+import { cleanRequest, confirmationEmail, requestEmail, sendEmail, STATUSES, verifyCaptcha } from './requests.js'
 
 const { ADMIN_USER, ADMIN_PASSWORD, JWT_SECRET, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT = 3001 } = process.env
 const missing = Object.entries({ ADMIN_USER, ADMIN_PASSWORD, JWT_SECRET, SUPABASE_URL, SUPABASE_SECRET_KEY }).filter(([, v]) => !v).map(([k]) => k)
@@ -102,6 +102,7 @@ app.get('/api/me', auth, (req, res) => res.json(req.me))
 app.post('/api/requests', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, message: { error: 'Demasiados envíos seguidos. Intente de nuevo en unos minutos o escríbanos por WhatsApp.' } }), async (req, res) => {
   const r = cleanRequest(req.body)
   if (!r) return res.status(201).json({ ok: true }) // robot: se ignora sin decirle por qué
+  if (!(await verifyCaptcha(req.body?.captcha, req.ip))) throw bad('No pudimos confirmar que no es un robot. Complete la verificación e intente de nuevo.')
   const id = await db.createRequest(r)
   let emailed = false
   if (process.env.RESEND_API_KEY && process.env.CONTACT_TO) {

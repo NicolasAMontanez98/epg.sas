@@ -72,3 +72,17 @@ export async function sendEmail({ to, subject, html, text, replyTo }) {
   })
   if (!res.ok) throw new Error(`Resend respondió ${res.status}: ${(await res.text()).slice(0, 300)}`)
 }
+
+// Cloudflare Turnstile: sin TURNSTILE_SECRET_KEY no se exige (útil en local). Si Cloudflare no responde, se rechaza.
+export async function verifyCaptcha(token, ip) {
+  const secret = process.env.TURNSTILE_SECRET_KEY
+  if (!secret) return true
+  if (!token || typeof token !== 'string') return false
+  const body = new URLSearchParams({ secret, response: token.slice(0, 2048), ...(ip ? { remoteip: ip } : {}) })
+  try {
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body })
+    return (await res.json()).success === true
+  } catch {
+    return false
+  }
+}

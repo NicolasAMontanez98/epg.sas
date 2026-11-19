@@ -359,13 +359,53 @@ function Infographics({ items }) {
 }
 
 // ---------- Envío de solicitudes al servidor (se guardan en el panel y llegan por correo) ----------
+// Cloudflare Turnstile. Sin VITE_TURNSTILE_SITE_KEY no se muestra (el servidor tampoco lo exige sin su secreto).
+const CAPTCHA_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
+let turnstileScript
+const loadTurnstile = () => (turnstileScript ??= new Promise((ok, fail) => {
+  const s = document.createElement('script')
+  s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+  s.async = true
+  s.onload = () => ok(window.turnstile)
+  s.onerror = () => { turnstileScript = null; fail(new Error('turnstile')) }
+  document.head.append(s)
+}))
+
+function Captcha({ onToken }) {
+  const ref = useRef(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let id
+    let alive = true
+    loadTurnstile()
+      .then((ts) => {
+        if (!alive || !ref.current) return
+        id = ts.render(ref.current, { sitekey: CAPTCHA_KEY, language: 'es', theme: 'light', callback: onToken, 'expired-callback': () => onToken(''), 'error-callback': () => onToken('') })
+      })
+      .catch(() => alive && setFailed(true))
+    return () => { alive = false; if (id !== undefined) window.turnstile?.remove(id) }
+  }, [onToken])
+  return (
+    <div className="captcha">
+      <div ref={ref} />
+      {failed && <p className="form-error" role="alert">No se pudo cargar la verificación anti-robots. Recargue la página o escríbanos por WhatsApp.</p>}
+    </div>
+  )
+}
+
 export function useRequest() {
   const [state, setState] = useState({ status: 'idle', error: '' })
+  const [token, setToken] = useState('')
+  const [round, setRound] = useState(0)
+  // Cada token sirve una sola vez: tras un error o un envío se pide uno nuevo.
+  const fresh = () => { setToken(''); setRound((n) => n + 1) }
   const send = async (body) => {
     setState({ status: 'sending', error: '' })
-    try { await api.sendRequest(body); setState({ status: 'sent', error: '' }) } catch (e) { setState({ status: 'error', error: e.message }) }
+    try { await api.sendRequest({ ...body, captcha: token }); setState({ status: 'sent', error: '' }) } catch (e) { setState({ status: 'error', error: e.message }); fresh() }
   }
-  return [state, send, () => setState({ status: 'idle', error: '' })]
+  const reset = () => { setState({ status: 'idle', error: '' }); fresh() }
+  const captcha = CAPTCHA_KEY ? <Captcha key={round} onToken={setToken} /> : null
+  return [state, send, reset, { captcha, canSend: !CAPTCHA_KEY || !!token }]
 }
 // Campo invisible para personas: si llega lleno, el servidor sabe que es un robot.
 export const Trap = ({ value, onChange }) => (
@@ -382,7 +422,7 @@ const BLANK_CONTACT = { name: '', town: '', email: '', phone: '', msg: '', conse
 function Contact({ settings: s }) {
   const [f, setF] = useState(BLANK_CONTACT)
   const [towns, setTowns] = useState([])
-  const [req, send, reset] = useRequest()
+  const [req, send, reset, { captcha, canSend }] = useRequest()
   // Lista oficial DIVIPOLA (DANE), cargada solo cuando el usuario llega al campo.
   const loadTowns = () => towns.length || fetch('/municipios.json').then((r) => r.json()).then(setTowns).catch(() => {})
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -429,9 +469,10 @@ function Contact({ settings: s }) {
               <label htmlFor="c-msg"><span className="mono">05 · ¿En qué le ayudamos?</span><textarea id="c-msg" rows="4" value={f.msg} onChange={set('msg')} required /></label>
               <Trap value={f.website} onChange={(v) => setF({ ...f, website: v })} />
               <Consent id="c-consent" checked={f.consent} onChange={(v) => setF({ ...f, consent: v })} />
+              {captcha}
               {req.status === 'error' && <p className="form-error" role="alert">{req.error}</p>}
               <div className="channels">
-                <button className="btn btn-red" disabled={req.status === 'sending'}>{req.status === 'sending' ? 'Enviando…' : 'Enviar solicitud'}</button>
+                <button className="btn btn-red" disabled={req.status === 'sending' || !canSend}>{req.status === 'sending' ? 'Enviando…' : 'Enviar solicitud'}</button>
                 {s.whatsapp && <a className="btn btn-line" href={`https://wa.me/${s.whatsapp}?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener"><MessageCircle size={16} aria-hidden /> Mejor por WhatsApp</a>}
               </div>
               <small className="form-note">Deje un correo o un teléfono para responderle.</small>
