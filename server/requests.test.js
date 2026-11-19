@@ -28,8 +28,13 @@ assert.equal('extra' in p.alerts[0], false)
 assert.equal(cleanRequest({ ...ok, payload: { general: {} } }).payload, null)
 
 // El correo escapa HTML.
-const mail = requestEmail(cleanRequest({ ...ok, message: '<img src=x onerror=alert(1)>', town: 'Tunja' }))
-assert.ok(!mail.html.includes('<img'))
-assert.ok(mail.html.includes('&lt;img'))
+const mail = requestEmail(cleanRequest({ ...ok, message: '<img src=x onerror=alert(1)>', town: 'Tunja', phone: '310 000 0000' }), 'https://epg.example')
+assert.ok(!mail.html.includes('<img src=x'))
+assert.ok(mail.html.includes('&lt;img src=x'))
 assert.equal(mail.subject, 'Formulario de contacto: Ana Pérez (Tunja)')
+// Marca: logo y enlaces con la dirección pública; WhatsApp con indicativo de Colombia.
+assert.ok(mail.html.includes('src="https://epg.example/logo.png"'))
+assert.ok(mail.html.includes('https://epg.example/admin'))
+assert.ok(mail.html.includes('https://wa.me/573100000000'))
+assert.ok(mail.text.includes('Panel: https://epg.example/admin'))
 console.log('OK: solicitudes')

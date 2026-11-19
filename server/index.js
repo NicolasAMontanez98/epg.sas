@@ -98,6 +98,9 @@ app.post('/api/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10 }), async
 })
 app.get('/api/me', auth, (req, res) => res.json(req.me))
 
+// Dirección pública de la web para el logo y los enlaces del correo (SITE_URL cuando haya dominio propio).
+const siteUrl = (req) => (process.env.SITE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
+
 // Formularios públicos: primero se guarda la solicitud (no se pierde si el correo falla), después se avisa por correo.
 app.post('/api/requests', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, message: { error: 'Demasiados envíos seguidos. Intente de nuevo en unos minutos o escríbanos por WhatsApp.' } }), async (req, res) => {
   const r = cleanRequest(req.body)
@@ -107,10 +110,10 @@ app.post('/api/requests', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, messag
   let emailed = false
   if (process.env.RESEND_API_KEY && process.env.CONTACT_TO) {
     try {
-      await sendEmail({ to: process.env.CONTACT_TO, replyTo: r.email || undefined, ...requestEmail(r) })
+      await sendEmail({ to: process.env.CONTACT_TO, replyTo: r.email || undefined, ...requestEmail(r, siteUrl(req)) })
       await db.markEmailed(id)
       emailed = true
-      if (process.env.RESEND_CONFIRM === 'true' && r.email) await sendEmail({ to: r.email, ...confirmationEmail(r) }).catch((e) => console.error('Confirmación no enviada:', e.message))
+      if (process.env.RESEND_CONFIRM === 'true' && r.email) await sendEmail({ to: r.email, ...confirmationEmail(r, siteUrl(req)) }).catch((e) => console.error('Confirmación no enviada:', e.message))
     } catch (e) {
       console.error('Correo de solicitud no enviado (queda guardada en el panel):', e.message)
     }
