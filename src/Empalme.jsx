@@ -445,7 +445,7 @@ const BLANK_HELP = { name: '', role: '', email: '', phone: '', topic: '', sheet:
 function HelpBox({ settings: s, tab }) {
   const [open, setOpen] = useState(false)
   const [h, setH] = useState(BLANK_HELP)
-  const [req, send, reset] = useRequest()
+  const [req, send, reset, { captcha, canSend }] = useRequest()
   const set = (k) => (e) => setH({ ...h, [k]: e.target.value })
   const data = open ? assistantData() : { alerts: [] }
   const g = data.general
@@ -494,9 +494,10 @@ function HelpBox({ settings: s, tab }) {
           )}
           <Trap value={h.website} onChange={(v) => setH({ ...h, website: v })} />
           <div className="wide"><Consent id="h-consent" checked={h.consent} onChange={(v) => setH({ ...h, consent: v })} /></div>
+          {captcha && <div className="wide">{captcha}</div>}
           {req.status === 'error' && <p className="wide form-error" role="alert">{req.error}</p>}
           <div className="wide tool-actions">
-            <button className="btn btn-red" disabled={req.status === 'sending'}>{req.status === 'sending' ? 'Enviando…' : 'Enviar solicitud'}</button>
+            <button className="btn btn-red" disabled={req.status === 'sending' || !canSend}>{req.status === 'sending' ? 'Enviando…' : 'Enviar solicitud'}</button>
             {s.whatsapp && <a className="btn btn-line" href={`https://wa.me/${s.whatsapp}?text=${encodeURIComponent(waText)}`} target="_blank" rel="noopener"><MessageCircle size={16} aria-hidden /> Mejor por WhatsApp</a>}
             <small className="mono">Deje un correo o un teléfono para responderle.</small>
           </div>

@@ -27,6 +27,8 @@ La primera vez que el sitio arranca, carga solo el contenido inicial (servicios,
 | `CONTACT_TO` | Correo de EPG que recibe las solicitudes |
 | `RESEND_FROM` | Remitente. Sin dominio verificado: `EPG Web <onboarding@resend.dev>` |
 | `RESEND_CONFIRM` | `true` para enviar al solicitante un acuse de recibo (requiere dominio verificado) |
+| `VITE_TURNSTILE_SITE_KEY` | Site key de Cloudflare Turnstile (pública, se incorpora al compilar) |
+| `TURNSTILE_SECRET_KEY` | Secret key de Turnstile (solo servidor) |
 
 En local van en un archivo `.env` (copie `.env.example`). En Vercel, en **Settings → Environment Variables**.
 
@@ -36,7 +38,8 @@ Los formularios de contacto y "Solicitar ayuda" (página de empalme) envían a `
 
 - Sin dominio verificado, Resend solo entrega al correo con el que se creó la cuenta: use ese correo en `CONTACT_TO`.
 - Con un dominio verificado (Resend → Domains, registros DNS) se puede usar un remitente propio, como `EPG S.A.S. <web@epgsas.com>`, y activar `RESEND_CONFIRM`.
-- Protección contra spam: campo trampa invisible, límite de 5 envíos cada 15 minutos por IP y límites de longitud.
+- Protección contra spam: captcha Cloudflare Turnstile, campo trampa invisible, límite de 5 envíos cada 15 minutos por IP y límites de longitud.
+- Turnstile: en Cloudflare → Turnstile → Add widget, agregue el dominio de la web (por ejemplo `epgsas-omega.vercel.app`) y modo **Managed**. Cargue ambas claves en Vercel y redespliegue: la site key solo llega al navegador en un build nuevo. Sin las claves, el captcha no se muestra ni se exige.
 - Cada formulario pide autorización de tratamiento de datos (Ley 1581 de 2012) y enlaza `/privacidad`. Ese texto es una base: debe revisarlo un abogado.
 
 Pruebas de la lógica: `node server/requests.test.js` y `node src/empalme/logic.test.js`.
