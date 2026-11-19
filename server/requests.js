@@ -39,28 +39,88 @@ function cleanPayload(p) {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 const SOURCE_LABEL = { contacto: 'Formulario de contacto', 'empalme-ayuda': 'Ayuda con el empalme' }
 
-export function requestEmail(r) {
-  const rows = [['Origen', SOURCE_LABEL[r.source]], ['Nombre', r.name], ['Cargo / dependencia', r.role], ['Municipio', r.town], ['Correo', r.email], ['Teléfono', r.phone], ['Tema', r.topic], ['Hoja', r.sheet]].filter(([, v]) => v)
-  const p = r.payload
-  const general = p ? GENERAL_FIELDS.filter((f) => p.general[f.key]).map((f) => [f.label, p.general[f.key]]) : []
-  const td = 'padding:6px 10px;border-bottom:1px solid #ddd;vertical-align:top'
-  const table = (list) => `<table style="border-collapse:collapse;font:14px Arial,sans-serif">${list.map(([k, v]) => `<tr><td style="${td};color:#666">${esc(k)}</td><td style="${td}">${esc(v)}</td></tr>`).join('')}</table>`
-  const html = [
-    `<h2 style="font:bold 18px Arial,sans-serif">Nueva solicitud desde la web</h2>`,
-    table(rows),
-    `<h3 style="font:bold 15px Arial,sans-serif;margin-top:18px">Mensaje</h3><p style="font:14px Arial,sans-serif;white-space:pre-wrap">${esc(r.message)}</p>`,
-    general.length ? `<h3 style="font:bold 15px Arial,sans-serif">Datos generales diligenciados</h3>${table(general)}` : '',
-    p?.alerts.length ? `<h3 style="font:bold 15px Arial,sans-serif">Alertas (${p.alerts.length})</h3><ul style="font:14px Arial,sans-serif">${p.alerts.map((a) => `<li><b>${esc(a.level || '—')}</b> · ${esc(a.origin)} · ${esc(a.text)}${a.date ? ` (vence ${esc(a.date)})` : ''}</li>`).join('')}</ul>` : '',
-    p?.progress ? `<p style="font:14px Arial,sans-serif">Avance del libro: ${p.progress.done} de ${p.progress.applicable} hojas entregadas.</p>` : '',
-    r.email ? `<p style="font:13px Arial,sans-serif;color:#666">Responda este correo para contestarle directamente a ${esc(r.name)}.</p>` : '',
-  ].join('')
-  const text = [...rows.map(([k, v]) => `${k}: ${v}`), '', r.message].join('\n')
-  return { subject: `${SOURCE_LABEL[r.source]}: ${r.name}${r.town ? ` (${r.town})` : ''}`, html, text }
+// ---------- Plantilla de marca para correo ----------
+// HTML de correo: tablas y estilos en línea (Outlook y Gmail ignoran CSS moderno). Colores de la web: negro, rojo y papel.
+const C = { ink: '#111012', red: '#b3121b', paper: '#ece6da', muted: '#5d5850', line: '#d9d1c3' }
+const F = 'Arial,Helvetica,sans-serif'
+const mono = "'Courier New',Courier,monospace"
+
+const button = (href, label, primary = true) =>
+  `<a href="${esc(href)}" style="display:inline-block;margin:0 8px 8px 0;padding:12px 20px;font:bold 13px ${F};letter-spacing:1px;text-transform:uppercase;text-decoration:none;border:2px solid ${C.ink};${primary ? `background:${C.red};color:#ffffff` : `background:#ffffff;color:${C.ink}`}">${esc(label)}</a>`
+
+const section = (title, inner) =>
+  `<tr><td style="padding:22px 32px 0"><p style="margin:0 0 10px;font:bold 11px ${mono};letter-spacing:2px;text-transform:uppercase;color:${C.red}">${esc(title)}</p>${inner}</td></tr>`
+
+const dataTable = (list) =>
+  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${list.map(([k, v]) => `<tr><td style="padding:8px 12px 8px 0;border-bottom:1px solid ${C.line};font:12px ${F};color:${C.muted};width:38%;vertical-align:top">${esc(k)}</td><td style="padding:8px 0;border-bottom:1px solid ${C.line};font:bold 14px ${F};color:${C.ink};vertical-align:top">${esc(v)}</td></tr>`).join('')}</table>`
+
+function layout({ base, preheader, tag, title, body }) {
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title.replace(/<br>/g, " "))}</title></head>
+<body style="margin:0;padding:0;background:${C.paper}">
+<div style="display:none;max-height:0;overflow:hidden">${esc(preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.paper}"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border:2px solid ${C.ink}">
+  <tr><td style="background:${C.ink};padding:18px 32px">
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td style="vertical-align:middle"><img src="${esc(base)}/logo.png" width="44" height="44" alt="EPG S.A.S." style="display:block;border:0;border-radius:50%;background:#ffffff"></td>
+      <td style="vertical-align:middle;padding-left:12px;font:bold 22px Georgia,'Times New Roman',serif;color:#ffffff">EPG S.A.S</td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="background:${C.red};height:6px;line-height:6px;font-size:0">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 0">
+    <span style="display:inline-block;background:${C.ink};color:${C.paper};padding:5px 10px;font:bold 11px ${mono};letter-spacing:2px;text-transform:uppercase">${esc(tag)}</span>
+    <h1 style="margin:16px 0 0;font:900 24px/1.15 'Arial Black',${F};text-transform:uppercase;color:${C.ink}">${title}</h1>
+  </td></tr>
+  ${body}
+  <tr><td style="padding:28px 32px 0"></td></tr>
+  <tr><td style="background:${C.ink};padding:18px 32px">
+    <p style="margin:0;font:bold 13px ${F};text-transform:uppercase;letter-spacing:1px;color:#ffffff">Cada decisión, una jugada maestra.</p>
+    <p style="margin:6px 0 0;font:12px ${F};color:#b9b2a6">Asesoría y gestión para alcaldías municipales · <a href="${esc(base)}" style="color:#ffffff">${esc(base.replace(/^https?:\/\//, ''))}</a></p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`
 }
 
-export function confirmationEmail(r) {
-  const html = `<p style="font:14px Arial,sans-serif">Hola ${esc(r.name)},</p><p style="font:14px Arial,sans-serif">Recibimos su solicitud y le responderemos pronto. Este es el mensaje que nos envió:</p><blockquote style="font:14px Arial,sans-serif;white-space:pre-wrap;border-left:3px solid #999;margin:0;padding-left:12px">${esc(r.message)}</blockquote><p style="font:14px Arial,sans-serif">EPG S.A.S. · Cada decisión, una jugada maestra.</p>`
-  return { subject: 'Recibimos su solicitud – EPG S.A.S.', html, text: `Hola ${r.name},\n\nRecibimos su solicitud y le responderemos pronto.\n\n${r.message}\n\nEPG S.A.S.` }
+const waLink = (phone) => {
+  const d = phone.replace(/\D/g, '')
+  return `https://wa.me/${d.length === 10 && d.startsWith('3') ? '57' + d : d}`
+}
+const LEVEL_COLOR = { Alto: '#c0392b', Medio: '#e3a33b', Bajo: '#4f9a5b' }
+
+export function requestEmail(r, base = 'https://epgsas.com') {
+  const rows = [['Nombre', r.name], ['Cargo / dependencia', r.role], ['Municipio', r.town], ['Correo', r.email], ['Teléfono', r.phone], ['Tema', r.topic], ['Hoja del libro', r.sheet]].filter(([, v]) => v)
+  const p = r.payload
+  const general = p ? GENERAL_FIELDS.filter((f) => p.general[f.key]).map((f) => [f.label, p.general[f.key]]) : []
+  const alerts = p?.alerts.length
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${p.alerts.map((a) => `<tr><td style="padding:8px 0;border-bottom:1px solid ${C.line};width:70px;vertical-align:top"><span style="display:inline-block;padding:3px 8px;font:bold 11px ${mono};text-transform:uppercase;color:#ffffff;background:${LEVEL_COLOR[a.level] || C.muted}">${esc(a.level || '—')}</span></td><td style="padding:8px 0;border-bottom:1px solid ${C.line};font:14px ${F};color:${C.ink}"><b>${esc(a.origin)}</b> · ${esc(a.text)}${a.date ? `<br><span style="font:12px ${F};color:${C.muted}">Fecha límite: ${esc(a.date)}</span>` : ''}</td></tr>`).join('')}</table>`
+    : ''
+  const actions = [
+    r.email && button(`mailto:${r.email}?subject=${encodeURIComponent('Re: su solicitud a EPG S.A.S.')}`, `Responder a ${r.name.split(' ')[0]}`),
+    r.phone && button(waLink(r.phone), 'WhatsApp', false),
+    button(`${base}/admin`, 'Abrir el panel', false),
+  ].filter(Boolean).join('')
+  const body = [
+    section('Datos de contacto', dataTable(rows)),
+    section('Mensaje', `<div style="border-left:4px solid ${C.red};background:${C.paper};padding:14px 16px;font:15px/1.5 ${F};color:${C.ink};white-space:pre-wrap">${esc(r.message)}</div>`),
+    general.length ? section('Datos generales diligenciados (hoja 01)', dataTable(general)) : '',
+    alerts ? section(`Alertas del semáforo (${p.alerts.length})`, alerts) : '',
+    p?.progress ? section('Avance del libro', `<p style="margin:0;font:bold 15px ${F};color:${C.ink}">${p.progress.done} de ${p.progress.applicable} hojas entregadas</p>`) : '',
+    section('Siguiente paso', `${actions}<p style="margin:4px 0 0;font:12px ${F};color:${C.muted}">${r.email ? `También puede responder este correo: le llega directo a ${esc(r.name)}.` : 'La persona dejó solo su teléfono.'}</p>`),
+  ].join('')
+  const subject = `${SOURCE_LABEL[r.source]}: ${r.name}${r.town ? ` (${r.town})` : ''}`
+  const html = layout({ base, preheader: r.message.slice(0, 120), tag: SOURCE_LABEL[r.source], title: 'Nueva solicitud<br>desde la web', body })
+  const text = [subject, '', ...rows.map(([k, v]) => `${k}: ${v}`), '', r.message, '', `Panel: ${base}/admin`].join('\n')
+  return { subject, html, text }
+}
+
+export function confirmationEmail(r, base = 'https://epgsas.com') {
+  const body = [
+    section('Su mensaje', `<p style="margin:0 0 12px;font:15px/1.5 ${F};color:${C.ink}">Hola ${esc(r.name.split(' ')[0])}, recibimos su solicitud. Un asesor de EPG S.A.S. le responderá pronto.</p><div style="border-left:4px solid ${C.red};background:${C.paper};padding:14px 16px;font:14px/1.5 ${F};color:${C.ink};white-space:pre-wrap">${esc(r.message)}</div>`),
+    section('Mientras tanto', `${button(`${base}/empalme`, 'Guía de empalme 2028')}${button(base, 'Conozca EPG', false)}`),
+  ].join('')
+  const html = layout({ base, preheader: 'Recibimos su solicitud y le responderemos pronto.', tag: 'Solicitud recibida', title: 'Gracias por<br>escribirnos', body })
+  return { subject: 'Recibimos su solicitud – EPG S.A.S.', html, text: `Hola ${r.name},\n\nRecibimos su solicitud y le responderemos pronto.\n\n${r.message}\n\nEPG S.A.S. · Cada decisión, una jugada maestra.\n${base}` }
 }
 
 // API REST de Resend. RESEND_FROM debe usar un dominio verificado; sin dominio, onboarding@resend.dev solo entrega al correo de la cuenta.
