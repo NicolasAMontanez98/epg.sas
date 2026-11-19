@@ -35,3 +35,24 @@ alter table public.users enable row level security;
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('uploads', 'uploads', true, 4194304, array['image/png', 'image/jpeg', 'image/webp'])
 on conflict (id) do nothing;
+
+-- Solicitudes que llegan desde los formularios de la web (contacto y ayuda del empalme).
+create table if not exists public.requests (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  source text not null check (source in ('contacto', 'empalme-ayuda')),
+  name text not null,
+  role text,
+  email text,
+  phone text,
+  town text,
+  topic text,
+  sheet text,
+  message text not null,
+  payload jsonb,
+  consent_at timestamptz not null,
+  emailed boolean not null default false,
+  status text not null default 'Nueva' check (status in ('Nueva', 'En gestión', 'Atendida'))
+);
+create index if not exists requests_created_idx on public.requests (created_at desc);
+alter table public.requests enable row level security;

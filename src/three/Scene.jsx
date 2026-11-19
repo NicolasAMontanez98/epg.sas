@@ -54,6 +54,7 @@ G.knightHead = (() => {
 const MAT = {
   black: { color: '#0c0c0e', roughness: 0.14, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04, reflectivity: 0.6 },
   red: { color: '#9a0e16', roughness: 0.2, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06, sheen: 0.4, sheenColor: '#ff6060' },
+  blue: { color: '#16359c', roughness: 0.2, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06, sheen: 0.4, sheenColor: '#7aa0ff' },
   ivory: { color: '#e9dfcc', roughness: 0.3, metalness: 0, clearcoat: 0.7, clearcoatRoughness: 0.15 },
 }
 const Mat = ({ c }) => <meshPhysicalMaterial {...MAT[c]} />
@@ -107,7 +108,8 @@ const HEIGHT = { queen: 3.6, king: 3.75, rook: 2.6, pawn: 2.2, bishop: 3.3, knig
 const still = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 // ---------- Estudio fotográfico: softboxes reflejados en la laca + sombra de contacto ----------
-function Studio({ shadowScale = 8 }) {
+// rim: color del reflejo de marca en la laca (rojo en la web principal, azul en empalme).
+function Studio({ shadowScale = 8, rim = '#ff2a2a' }) {
   return (
     <>
       <ambientLight intensity={0.12} />
@@ -117,10 +119,10 @@ function Studio({ shadowScale = 8 }) {
         <Lightformer form="rect" intensity={5} position={[0, 6, 1]} scale={[8, 3, 1]} rotation-x={Math.PI / 2} />
         <Lightformer form="rect" intensity={3} position={[-5, 2, 1]} scale={[2, 7, 1]} rotation-y={Math.PI / 2} />
         <Lightformer form="rect" intensity={3} position={[5, 2, -1]} scale={[2, 7, 1]} rotation-y={-Math.PI / 2} />
-        <Lightformer form="ring" color="#ff2a2a" intensity={2.2} position={[0, 2, 7]} scale={2.5} />
+        <Lightformer form="ring" color={rim} intensity={2.2} position={[0, 2, 7]} scale={2.5} />
         <Lightformer form="rect" intensity={1} position={[0, 1, -6]} scale={[10, 2, 1]} />
       </Environment>
-      <ContactShadows position={[0, 0.001, 0]} opacity={0.6} scale={shadowScale} blur={2.2} far={4} resolution={512} color="#1a0003" />
+      <ContactShadows position={[0, 0.001, 0]} opacity={0.6} scale={shadowScale} blur={2.2} far={4} resolution={512} color={rim === '#ff2a2a' ? '#1a0003' : '#00051a'} />
     </>
   )
 }
@@ -148,13 +150,14 @@ const Cam = ({ h, dist = 8 }) => (
 )
 
 // Una pieza sola, girando sobre su eje.
-export function Piece({ kind = 'queen', color = 'black', className }) {
+const RIM_BLUE = '#3a6bff'
+export function Piece({ kind = 'queen', color = 'black', rim, className }) {
   const P = PIECES[kind]
   const h = HEIGHT[kind]
   return (
     <View className={className}>
       <Cam h={h} dist={h * 2.6 + 1.5} />
-      <Studio />
+      <Studio rim={rim ?? (color === 'blue' ? RIM_BLUE : undefined)} />
       <Tilt amount={0.25}>
         <Turntable speed={0.3}><P c={color} /></Turntable>
       </Tilt>
@@ -181,6 +184,21 @@ export function HeroPieces({ className }) {
         <group position={[1.25, 0, -0.3]} scale={0.88}><PIECES.rook c="red" /></group>
         <group position={[-2.75, 0, -0.6]} scale={1.02} rotation={[0, 0.35, 0]}><PIECES.knight c="black" /></group>
         <group position={[2.75, 0, -0.6]} scale={1.02} rotation={[0, Math.PI - 0.35, 0]}><PIECES.knight c="black" /></group>
+      </Tilt>
+    </View>
+  )
+}
+
+// Empalme: rey saliente (negro) y rey entrante (azul) frente a frente, con un peón entre ambos.
+export function EmpalmePieces({ className }) {
+  return (
+    <View className={className}>
+      <PerspectiveCamera makeDefault fov={28} position={[0, 2.6, 12.5]} onUpdate={(c) => c.lookAt(0, 1.7, 0)} />
+      <Studio shadowScale={11} rim={RIM_BLUE} />
+      <Tilt amount={0.22}>
+        <group position={[-1.6, 0, -0.4]}><Turntable speed={0.12}><PIECES.king c="black" /></Turntable></group>
+        <group position={[1.6, 0, 0.4]}><Turntable speed={-0.12}><PIECES.king c="blue" /></Turntable></group>
+        <group position={[0, 0, 1.4]} scale={0.7}><PIECES.pawn c="ivory" /></group>
       </Tilt>
     </View>
   )

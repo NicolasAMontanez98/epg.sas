@@ -4,18 +4,18 @@ import { ArrowRight, ArrowUpRight, LogIn, Mail, MapPin, Menu, MessageCircle, X, 
 import { api } from './api.js'
 
 // Three.js va en un chunk aparte: el texto carga primero y las piezas llegan después.
-const load = () => import('./three/Scene.jsx')
-const Scene = lazy(load)
+export const load = () => import('./three/Scene.jsx')
+export const Scene = lazy(load)
 const Piece3D = lazy(() => load().then((m) => ({ default: m.Piece })))
 const Hero3D = lazy(() => load().then((m) => ({ default: m.HeroPieces })))
-const Safe = lazy(() => load().then((m) => ({ default: m.Safe3D })))
-const Piece = (p) => <Suspense fallback={null}><Safe><Piece3D {...p} /></Safe></Suspense>
+export const Safe = lazy(() => load().then((m) => ({ default: m.Safe3D })))
+export const Piece = (p) => <Suspense fallback={null}><Safe><Piece3D {...p} /></Safe></Suspense>
 
 const ICONS = { Landmark, GraduationCap, Handshake, Target, ClipboardCheck, FileText, ShieldCheck, TriangleAlert, Users }
 const SLOGAN = 'Cada decisión, una jugada maestra.'
 const ease = [0.2, 0.8, 0.2, 1]
 
-const Rise = ({ children, delay = 0, x = 0, y = 40, rotate = 0, className, style, as = 'div' }) => {
+export const Rise = ({ children, delay = 0, x = 0, y = 40, rotate = 0, className, style, as = 'div' }) => {
   const C = motion[as]
   return (
     <C className={className} style={style} initial={{ opacity: 0, x, y, rotate }} whileInView={{ opacity: 1, x: 0, y: 0, rotate: 0 }} viewport={{ once: true, margin: '-60px' }} transition={{ duration: 0.8, delay, ease }}>
@@ -25,7 +25,7 @@ const Rise = ({ children, delay = 0, x = 0, y = 40, rotate = 0, className, style
 }
 
 // Encabezado de sección como rótulo de plano: número de sección, cota y título.
-const Heading = ({ n, eyebrow, title, intro, dark }) => (
+export const Heading = ({ n, eyebrow, title, intro, dark }) => (
   <header className={`heading ${dark ? 'on-dark' : ''}`}>
     <Rise className="sec-tag mono" x={-30} y={0}>
       <span className="sec-n">{String(n).padStart(2, '0')}</span>
@@ -39,7 +39,7 @@ const Heading = ({ n, eyebrow, title, intro, dark }) => (
 
 // ---------- Regla métrica: reemplaza la barra de scroll ----------
 const PX_PER_CM = 96 / 2.54
-function Ruler() {
+export function Ruler() {
   const { scrollYProgress } = useScroll()
   const top = useTransform(scrollYProgress, (p) => `clamp(16px, ${p * 100}%, calc(100% - 16px))`)
   const readout = useRef(null)
@@ -101,6 +101,7 @@ function Header({ banners, shown }) {
         <button className="burger" onClick={() => setOpen(!open)} aria-expanded={open} aria-label="Menú">{open ? <X /> : <Menu />}</button>
         <ul className={open ? 'open' : ''} onClick={() => setOpen(false)}>
           {links.map(([h, t], i) => <li key={h}><a href={h}><span className="mono">0{i + 1}</span>{t}</a></li>)}
+          <li><a href="/empalme"><span className="mono">★</span>Empalme 2028</a></li>
           <li><a href="/admin" className="login"><LogIn size={16} aria-hidden /> Iniciar sesión</a></li>
           <li><a href="#contacto" className="btn btn-red">Contáctenos <ArrowRight size={16} aria-hidden /></a></li>
         </ul>
@@ -357,15 +358,40 @@ function Infographics({ items }) {
   )
 }
 
+// ---------- Envío de solicitudes al servidor (se guardan en el panel y llegan por correo) ----------
+export function useRequest() {
+  const [state, setState] = useState({ status: 'idle', error: '' })
+  const send = async (body) => {
+    setState({ status: 'sending', error: '' })
+    try { await api.sendRequest(body); setState({ status: 'sent', error: '' }) } catch (e) { setState({ status: 'error', error: e.message }) }
+  }
+  return [state, send, () => setState({ status: 'idle', error: '' })]
+}
+// Campo invisible para personas: si llega lleno, el servidor sabe que es un robot.
+export const Trap = ({ value, onChange }) => (
+  <input className="trap" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={value} onChange={(e) => onChange(e.target.value)} />
+)
+export const Consent = ({ id, checked, onChange }) => (
+  <label className="consent" htmlFor={id}>
+    <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} required />
+    <span>Autorizo a EPG S.A.S. a tratar mis datos personales para responder esta solicitud, según la <a href="/privacidad" target="_blank" rel="noopener">política de tratamiento de datos</a> (Ley 1581 de 2012).</span>
+  </label>
+)
+
+const BLANK_CONTACT = { name: '', town: '', email: '', phone: '', msg: '', consent: false, website: '' }
 function Contact({ settings: s }) {
-  const [f, setF] = useState({ name: '', town: '', msg: '' })
+  const [f, setF] = useState(BLANK_CONTACT)
   const [towns, setTowns] = useState([])
+  const [req, send, reset] = useRequest()
   // Lista oficial DIVIPOLA (DANE), cargada solo cuando el usuario llega al campo.
   const loadTowns = () => towns.length || fetch('/municipios.json').then((r) => r.json()).then(setTowns).catch(() => {})
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
-  const ready = f.name && f.town && f.msg
-  const text = `Hola EPG S.A.S., soy ${f.name} de ${f.town}. ${f.msg}`
+  const text = `Hola EPG S.A.S., soy ${f.name}${f.town ? ` de ${f.town}` : ''}. ${f.msg}`
   const socials = [['Facebook', s.facebook], ['Instagram', s.instagram], ['LinkedIn', s.linkedin], ['TikTok', s.tiktok]].filter(([, u]) => u)
+  const submit = (e) => {
+    e.preventDefault()
+    send({ source: 'contacto', name: f.name, town: f.town, email: f.email, phone: f.phone, message: f.msg, consent: f.consent, website: f.website })
+  }
   return (
     <section id="contacto" className="section contact">
       <div className="c-wedge" aria-hidden />
@@ -373,8 +399,8 @@ function Contact({ settings: s }) {
         <div>
           <Heading dark n={8} eyebrow="Contáctenos" title="Su turno. Hagamos la próxima jugada." intro="Cuéntenos qué necesita su alcaldía y le responderemos con una propuesta clara." />
           <div className="channels">
-            <a className="btn btn-paper btn-lg" href={`https://wa.me/${s.whatsapp}`} target="_blank" rel="noopener"><MessageCircle size={18} aria-hidden /> WhatsApp</a>
-            <a className="btn btn-line light btn-lg" href={`mailto:${s.email}`}><Mail size={18} aria-hidden /> {s.email}</a>
+            {s.whatsapp && <a className="btn btn-paper btn-lg" href={`https://wa.me/${s.whatsapp}`} target="_blank" rel="noopener"><MessageCircle size={18} aria-hidden /> WhatsApp</a>}
+            {s.email && <a className="btn btn-line light btn-lg" href={`mailto:${s.email}`}><Mail size={18} aria-hidden /> {s.email}</a>}
           </div>
           {(s.phoneLabel || s.address) && <p className="meta mono">{[s.phoneLabel, s.address].filter(Boolean).join(' · ')}</p>}
           {socials.length > 0 && <div className="socials">{socials.map(([n, u]) => <a key={n} href={u} target="_blank" rel="noopener" className="mono">{n} ↗</a>)}</div>}
@@ -383,24 +409,41 @@ function Contact({ settings: s }) {
           </div>
         </div>
         <Rise delay={0.15} x={40} y={0}>
-          <form className="form" onSubmit={(e) => e.preventDefault()}>
-            <p className="form-title mono">Formulario EPG-01 · Solicitud de asesoría</p>
-            <label><span className="mono">01 · Su nombre</span><input value={f.name} onChange={set('name')} required autoComplete="name" /></label>
-            <label><span className="mono">02 · Municipio</span><input value={f.town} onChange={set('town')} onFocus={loadTowns} list="municipios" placeholder="Escriba para buscar…" autoComplete="off" required /></label>
-            <datalist id="municipios">{towns.map((t) => <option key={t} value={t} />)}</datalist>
-            <label><span className="mono">03 · ¿En qué le ayudamos?</span><textarea rows="4" value={f.msg} onChange={set('msg')} required /></label>
-            <div className="channels">
-              <a className={`btn btn-red ${ready ? '' : 'disabled'}`} aria-disabled={!ready} tabIndex={ready ? 0 : -1} href={`https://wa.me/${s.whatsapp}?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener">Enviar por WhatsApp</a>
-              <a className={`btn btn-line ${ready ? '' : 'disabled'}`} aria-disabled={!ready} tabIndex={ready ? 0 : -1} href={`mailto:${s.email}?subject=${encodeURIComponent('Consulta desde la web - ' + f.town)}&body=${encodeURIComponent(text)}`}>Enviar por correo</a>
+          {req.status === 'sent' ? (
+            <div className="form sent" role="status">
+              <p className="form-title mono">Formulario EPG-01 · Recibido</p>
+              <h3>Gracias, {f.name.split(' ')[0]}.</h3>
+              <p>Recibimos su solicitud. Le responderemos {f.email ? `a ${f.email}` : `al ${f.phone}`} lo antes posible.</p>
+              <button type="button" className="btn btn-line" onClick={() => { reset(); setF(BLANK_CONTACT) }}>Enviar otra solicitud</button>
             </div>
-          </form>
+          ) : (
+            <form className="form" onSubmit={submit}>
+              <p className="form-title mono">Formulario EPG-01 · Solicitud de asesoría</p>
+              <label htmlFor="c-name"><span className="mono">01 · Su nombre</span><input id="c-name" value={f.name} onChange={set('name')} required autoComplete="name" /></label>
+              <label htmlFor="c-town"><span className="mono">02 · Municipio</span><input id="c-town" value={f.town} onChange={set('town')} onFocus={loadTowns} list="municipios" placeholder="Escriba para buscar…" autoComplete="off" /></label>
+              <datalist id="municipios">{towns.map((t) => <option key={t} value={t} />)}</datalist>
+              <div className="form-row">
+                <label htmlFor="c-email"><span className="mono">03 · Correo</span><input id="c-email" type="email" value={f.email} onChange={set('email')} autoComplete="email" /></label>
+                <label htmlFor="c-phone"><span className="mono">04 · Teléfono</span><input id="c-phone" type="tel" value={f.phone} onChange={set('phone')} autoComplete="tel" /></label>
+              </div>
+              <label htmlFor="c-msg"><span className="mono">05 · ¿En qué le ayudamos?</span><textarea id="c-msg" rows="4" value={f.msg} onChange={set('msg')} required /></label>
+              <Trap value={f.website} onChange={(v) => setF({ ...f, website: v })} />
+              <Consent id="c-consent" checked={f.consent} onChange={(v) => setF({ ...f, consent: v })} />
+              {req.status === 'error' && <p className="form-error" role="alert">{req.error}</p>}
+              <div className="channels">
+                <button className="btn btn-red" disabled={req.status === 'sending'}>{req.status === 'sending' ? 'Enviando…' : 'Enviar solicitud'}</button>
+                {s.whatsapp && <a className="btn btn-line" href={`https://wa.me/${s.whatsapp}?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener"><MessageCircle size={16} aria-hidden /> Mejor por WhatsApp</a>}
+              </div>
+              <small className="form-note">Deje un correo o un teléfono para responderle.</small>
+            </form>
+          )}
         </Rise>
       </div>
     </section>
   )
 }
 
-function Footer({ settings: s, links }) {
+export function Footer({ settings: s, links }) {
   const y = new Date().getFullYear()
   const socials = [['Facebook', s.facebook], ['Instagram', s.instagram], ['LinkedIn', s.linkedin], ['TikTok', s.tiktok]].filter(([, u]) => u)
   return (
@@ -416,9 +459,10 @@ function Footer({ settings: s, links }) {
         <nav aria-label="Pie de página">
           <h3 className="mono">Navegación</h3>
           <ul>
-            <li><a href="#inicio">Inicio</a></li>
-            {links.map(([h, t]) => <li key={h}><a href={h}>{t}</a></li>)}
-            <li><a href="#contacto">Contáctenos</a></li>
+            <li><a href="/#inicio">Inicio</a></li>
+            {links.map(([h, t]) => <li key={h}><a href={'/' + h}>{t}</a></li>)}
+            <li><a href="/empalme">Empalme 2028</a></li>
+            <li><a href="/#contacto">Contáctenos</a></li>
           </ul>
         </nav>
         <div>
@@ -445,7 +489,7 @@ function Footer({ settings: s, links }) {
       </div>
       <div className="wrap foot-bottom mono">
         <span>© {y} EPG S.A.S. Todos los derechos reservados.</span>
-        <span>Hecho en Colombia</span>
+        <span><a href="/privacidad">Política de tratamiento de datos</a> · Hecho en Colombia</span>
       </div>
     </footer>
   )
@@ -456,6 +500,8 @@ const EMPTY = { settings: {}, banners: [], services: [], team: [], dates: [], ex
 export default function Site() {
   const [c, setC] = useState(null)
   useEffect(() => { api.content().then(setC).catch(() => setC(EMPTY)) }, [])
+  // El contenido llega después de cargar: si la URL trae #seccion (p. ej. desde /empalme), bajar cuando exista.
+  useEffect(() => { if (c && location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView() }, [c])
   if (!c) return <div className="loading mono" role="status">EPG S.A.S. — cargando plano…</div>
   const today = new Date().toISOString().slice(0, 10)
   const dates = c.dates.filter((d) => d.date >= today).sort((a, b) => a.date.localeCompare(b.date))

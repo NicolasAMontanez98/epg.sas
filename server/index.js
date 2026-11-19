@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SCHEMA, SETTINGS } from '../shared/schema.js'
 import * as db from './db.js'
+import { cleanRequest, confirmationEmail, requestEmail, sendEmail, STATUSES } from './requests.js'
 
 const { ADMIN_USER, ADMIN_PASSWORD, JWT_SECRET, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT = 3001 } = process.env
 const missing = Object.entries({ ADMIN_USER, ADMIN_PASSWORD, JWT_SECRET, SUPABASE_URL, SUPABASE_SECRET_KEY }).filter(([, v]) => !v).map(([k]) => k)
@@ -97,6 +98,25 @@ app.post('/api/login', rateLimit({ windowMs: 15 * 60 * 1000, limit: 10 }), async
 })
 app.get('/api/me', auth, (req, res) => res.json(req.me))
 
+// Formularios públicos: primero se guarda la solicitud (no se pierde si el correo falla), después se avisa por correo.
+app.post('/api/requests', rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, message: { error: 'Demasiados envíos seguidos. Intente de nuevo en unos minutos o escríbanos por WhatsApp.' } }), async (req, res) => {
+  const r = cleanRequest(req.body)
+  if (!r) return res.status(201).json({ ok: true }) // robot: se ignora sin decirle por qué
+  const id = await db.createRequest(r)
+  let emailed = false
+  if (process.env.RESEND_API_KEY && process.env.CONTACT_TO) {
+    try {
+      await sendEmail({ to: process.env.CONTACT_TO, replyTo: r.email || undefined, ...requestEmail(r) })
+      await db.markEmailed(id)
+      emailed = true
+      if (process.env.RESEND_CONFIRM === 'true' && r.email) await sendEmail({ to: r.email, ...confirmationEmail(r) }).catch((e) => console.error('Confirmación no enviada:', e.message))
+    } catch (e) {
+      console.error('Correo de solicitud no enviado (queda guardada en el panel):', e.message)
+    }
+  }
+  res.status(201).json({ ok: true, emailed })
+})
+
 const users = express.Router()
 users.use(auth, allow('admin'))
 users.get('/', async (_req, res) => res.json((await db.listUsers()).map(publicUser)))
@@ -132,6 +152,17 @@ admin.post('/upload', upload.single('file'), async (req, res) => {
   res.json({ url: await db.uploadImage(req.file.buffer, req.file.mimetype) })
 })
 admin.put('/settings', async (req, res) => res.json(await db.saveSettings(clean(SETTINGS.fields, req.body))))
+
+admin.get('/requests', async (_req, res) => res.set('Cache-Control', 'no-store').json(await db.listRequests()))
+admin.put('/requests/:id', async (req, res) => {
+  if (!STATUSES.includes(req.body?.status)) throw bad('Estado no válido')
+  if (!isId(req.params.id) || !(await db.setRequestStatus(req.params.id, req.body.status))) throw bad('No existe', 404)
+  res.json({ ok: true })
+})
+admin.delete('/requests/:id', allow('admin'), async (req, res) => {
+  if (isId(req.params.id)) await db.deleteRequest(req.params.id)
+  res.status(204).end()
+})
 
 admin.use('/:col', (req, _res, next) => next(SCHEMA[req.params.col] ? undefined : bad('No existe', 404)))
 admin.post('/:col', async (req, res) => res.status(201).json(await db.createItem(req.params.col, clean(SCHEMA[req.params.col].fields, req.body))))
